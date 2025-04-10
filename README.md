@@ -8,7 +8,7 @@ Les statistiques des joueurs de la NBA sont extraites grâce à l'API officielle
 
 ## Structure du Dépôt
 
-- **nba_players_data_temp_*.csv**  
+- **nba_players_data_temp_*.csv**  https://drive.google.com/drive/folders/1SLVqHJXH8_d5Z0FPvkCtuz4K37L9ZvKo?usp=sharing
   Fichiers intermédiaires générés lors de la collecte des données. Chaque fichier contient une partie des statistiques collectées pour assurer la continuité de la collecte en cas d'interruption.
 
 ## Utilisation
