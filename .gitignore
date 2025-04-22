@@ -1,3 +1,6 @@
 .venv/
 __pycache__/
 *.pyc
+# Ne pas suivre les données brutes ni les Parquet générés
+/nba_rating/data/raw/
+/nba_rating/data/curated/
