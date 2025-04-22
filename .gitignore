@@ -1,6 +1,6 @@
-.venv/
+.venv
+.DS_Store
 __pycache__/
 *.pyc
-# Ne pas suivre les données brutes ni les Parquet générés
-/nba_rating/data/raw/
-/nba_rating/data/curated/
+1st_part_discover_api/data
+nba_rating/data
