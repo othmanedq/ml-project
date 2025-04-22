@@ -1,6 +1,21 @@
-.venv
+# Ignorer tous les dossiers data
+/data/
+/nba_rating/data/
+
+# Fichiers Parquet / CSV générés
+*.parquet
+*.csv
+
+# Checkpoints Jupyter
+.ipynb_checkpoints/
+
+# MacOS
 .DS_Store
+
+# Python compilé
 __pycache__/
-*.pyc
-1st_part_discover_api/data
-nba_rating/data
+*.py[cod]
+
+# Virtualenv
+.venv/
+venv/
