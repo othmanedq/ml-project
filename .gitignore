@@ -1,5 +1,5 @@
 # Ignorer tous les dossiers data
-/data/
+discovering & testing/data/
 /nba_rating/data/
 
 # Fichiers Parquet / CSV générés
