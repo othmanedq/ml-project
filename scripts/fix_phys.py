@@ -19,7 +19,7 @@ import pandas as pd
 from pathlib import Path
 
 RAW = Path("nba_rating/data/raw")
-seasons = [f"{y}-{str(y+1)[-2:]}" for y in range(2014, 2024)]
+seasons = [f"{y}-{str(y+1)[-2:]}" for y in range(1999, 2024)]
 
 def convert_height(ht):
     try:

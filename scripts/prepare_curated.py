@@ -1,91 +1,62 @@
+# prepare_curated.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 prepare_curated.py
 -------------------
-Pour chaque saison, ce script :
-1. Lit les fichiers raw (boxscores + mensurations)
-2. Agrège les statistiques match → joueur/saison
-3. Fusionne avec les mensurations
-4. Ajoute min_per_game (temps moyen par match)
-5. Vérifie que les colonnes critiques sont bien présentes
-6. Sauvegarde le fichier final dans data/curated/
+Pour chaque saison :
+1. Lit les raw (boxscores, phys)
+2. Agrège match→joueur/saison
+3. Fusionne mensurations + POSITION + exp
+4. Ajoute min_per_game
+5. Joint esv_mean et pace
+6. Sauvegarde en curated
 """
-
 import pandas as pd
 from pathlib import Path
 
-# Dossiers
 RAW     = Path("nba_rating/data/raw")
 CURATED = Path("nba_rating/data/curated")
 CURATED.mkdir(parents=True, exist_ok=True)
+SEASONS = [f"{y}-{str(y+1)[-2:]}" for y in range(1999, 2024)]
 
-# Saisons à traiter
-seasons = [f"{y}-{str(y+1)[-2:]}" for y in range(2014, 2024)]
+for season in SEASONS:
+    gl = pd.read_parquet(RAW/f"player_gamelog_{season}.parquet")
+    phys = pd.read_parquet(RAW/f"player_phys_{season}.parquet")
+    esv  = pd.read_parquet(RAW/f"player_esv_{season}.parquet")
+    pace = pd.read_parquet(RAW/f"team_pace_{season}.parquet")
 
-def convert_height(ht):
-    try:
-        ft, inch = map(int, ht.split("-"))
-        return ft * 30.48 + inch * 2.54
-    except:
-        return None
+    # 1) stats de base
+    stats = gl.groupby("PLAYER_ID").agg(
+        pts_mean        = ("PTS","mean"),
+        reb_mean        = ("REB","mean"),
+        ast_mean        = ("AST","mean"),
+        plus_minus_mean = ("PLUS_MINUS","mean"),
+        gp               = ("GAME_ID","nunique"),
+        min_per_game    = ("MIN","mean")
+    ).reset_index()
 
-print("📦 Création des fichiers curated/")
-for season in seasons:
-    try:
-        # Chargement des fichiers RAW
-        gl_path = RAW / f"player_gamelog_{season}.parquet"
-        ph_path = RAW / f"player_phys_{season}.parquet"
-        out_path = CURATED / f"player_season_{season}.parquet"
+    # 2) phys + poste + exp
+    phys = phys.rename(columns={"AGE":"age","EXP":"exp"})
+    keep = ["PLAYER_ID","POSITION","height_cm","weight_kg","bmi","age","exp"]
+    phys = phys[[c for c in keep if c in phys.columns]]
 
-        gl = pd.read_parquet(gl_path)
+    df = stats.merge(phys, on="PLAYER_ID", how="left")
 
-        # Agrégation des stats par joueur
-        stats = gl.groupby("PLAYER_ID").agg(
-            pts_mean         = ("PTS", "mean"),
-            reb_mean         = ("REB", "mean"),
-            ast_mean         = ("AST", "mean"),
-            plus_minus_mean  = ("PLUS_MINUS", "mean"),
-            gp               = ("GAME_ID", "nunique"),
-            min_per_game     = ("MIN", "mean")  # ✅ ajout ici
-        ).reset_index()
+    # 3) esv_mean
+    df = df.merge(esv, on="PLAYER_ID", how="left")
 
-        # Tentative de fusion avec les mensurations
-        if ph_path.exists():
-            phys = pd.read_parquet(ph_path)
+    # 4) pace
+    main_tm = gl.groupby(["PLAYER_ID","TEAM_ID"]).size()\
+                .reset_index(name="cnt")\
+                .sort_values("cnt",ascending=False)\
+                .drop_duplicates("PLAYER_ID")
+    df = df.merge(main_tm[["PLAYER_ID","TEAM_ID"]], on="PLAYER_ID", how="left")
+    df = df.merge(pace, on="TEAM_ID", how="left")
 
-            # Conversions si manquantes
-            if "height_cm" not in phys.columns and "HEIGHT" in phys.columns:
-                phys["height_cm"] = phys["HEIGHT"].apply(convert_height)
+    # 5) vérifications
+    for c in ["pts_mean","reb_mean","ast_mean","plus_minus_mean","gp"]:
+        assert c in df.columns
 
-            if "weight_kg" not in phys.columns and "WEIGHT" in phys.columns:
-                phys["weight_kg"] = pd.to_numeric(phys["WEIGHT"], errors="coerce") / 2.205
-
-            if "bmi" not in phys.columns and {"height_cm", "weight_kg"}.issubset(phys.columns):
-                phys["bmi"] = phys["weight_kg"] / (phys["height_cm"]/100)**2
-
-            if "AGE" in phys.columns:
-                phys = phys.rename(columns={"AGE": "age"})
-
-            # Sélection des colonnes disponibles
-            phys = phys[["PLAYER_ID"] + [c for c in ["height_cm", "weight_kg", "bmi", "age"] if c in phys.columns]]
-        else:
-            phys = pd.DataFrame(columns=["PLAYER_ID"])  # fichier vide mais sans erreur
-
-        # Fusion
-        df = stats.merge(phys, on="PLAYER_ID", how="left")
-
-        # Vérifications
-        cols_essentielles = ["pts_mean", "reb_mean", "ast_mean", "plus_minus_mean", "gp"]
-        for col in cols_essentielles:
-            assert col in df.columns, f"❌ Colonne manquante : {col} dans {season}"
-
-        if not {"height_cm", "bmi", "age"}.issubset(df.columns):
-            print(f"⚠️  Mensurations incomplètes pour {season} (physiques non utilisés dans cette saison)")
-
-        df.to_parquet(out_path, index=False)
-        print(f"✅ {season} : {len(df)} joueurs traités")
-
-    except Exception as e:
-        print(f"❌ {season} : erreur → {e}")
+    df.to_parquet(CURATED/f"player_season_{season}.parquet", index=False)
+    print(f"✅ {season} → {len(df)} joueurs")
