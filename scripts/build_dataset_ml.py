@@ -31,13 +31,16 @@ df_all["avail"] = df_all["gp"] / 82  # recalculer si manquant
 df_all["note_n"] = df_all["score_100"]
 df_all["note_n1"] = df_all.groupby("PLAYER_ID")["score_100"].shift(-1)
 
+# 🔁 Calculer delta_score (variation de note entre 2 saisons)
+df_all["delta_score"] = df_all.groupby("PLAYER_ID")["score_100"].diff()
+
 # 5. Filtrer les lignes valides (note_n1 connue)
 df_ml = df_all.dropna(subset=["note_n1"])
 
 # 6. Sélection des features et cible
 features_used = [
     "pts_mean", "reb_mean", "ast_mean", "plus_minus_mean",
-    "avail", "height_cm", "bmi", "age"
+    "avail", "height_cm", "bmi", "age", "delta_score"
 ]
 
 X = df_ml[features_used]
