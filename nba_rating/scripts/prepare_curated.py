@@ -8,8 +8,9 @@ Pour chaque saison, ce script :
 1. Lit les fichiers raw (boxscores + mensurations)
 2. Agrège les statistiques match → joueur/saison
 3. Fusionne avec les mensurations
-4. Vérifie que les colonnes critiques sont bien présentes
-5. Sauvegarde le fichier final dans data/curated/
+4. Ajoute min_per_game (temps moyen par match)
+5. Vérifie que les colonnes critiques sont bien présentes
+6. Sauvegarde le fichier final dans data/curated/
 """
 
 import pandas as pd
@@ -46,7 +47,8 @@ for season in seasons:
             reb_mean         = ("REB", "mean"),
             ast_mean         = ("AST", "mean"),
             plus_minus_mean  = ("PLUS_MINUS", "mean"),
-            gp               = ("GAME_ID", "nunique")
+            gp               = ("GAME_ID", "nunique"),
+            min_per_game     = ("MIN", "mean")  # ✅ ajout ici
         ).reset_index()
 
         # Tentative de fusion avec les mensurations
