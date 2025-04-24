@@ -10,7 +10,7 @@ RAW_DIR = Path("nba_rating/data/raw")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 # Saisons à traiter
-seasons = [f"{y}-{str(y+1)[-2:]}" for y in range(2014, 2024)]
+seasons = [f"{y}-{str(y+1)[-2:]}" for y in range(1999, 2024)]
 team_list = teams.get_teams()
 
 def convert_height(h: str):
