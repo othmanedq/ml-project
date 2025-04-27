@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
 collect_team_data.py
 --------------------
-Collecte des données brutes NBA pour les équipes :
-  · GameLog des équipes (TEAM)
-  · Calcul des stats moyennes par équipe et par saison
+Collecte les GameLogs NBA pour les équipes :
+  · GameLog des équipes (T)
+  · Sauvegarde en Parquet dans data/raw/
 """
 
 import time
@@ -13,12 +14,19 @@ from pathlib import Path
 import pandas as pd
 from nba_api.stats.endpoints import LeagueGameLog
 
-# Définir le dossier de sauvegarde
-RAW_DIR = Path("data/raw")
-RAW_DIR.mkdir(parents=True, exist_ok=True)
+# Définir le chemin de base
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BASE_DIR / "data"
+RAW_DIR = DATA_DIR / "raw"
 
-# Définir les saisons souhaitées
-SEASONS = [f"{year}-{str(year+1)[-2:]}" for year in range(2018, 2024)]  # 2018-2019 à 2023-2024
+# Créer les dossiers data/ et data/raw/ s'ils n'existent pas
+if not DATA_DIR.exists():
+    DATA_DIR.mkdir(parents=True)
+if not RAW_DIR.exists():
+    RAW_DIR.mkdir(parents=True)
+
+# Définir les saisons à télécharger
+SEASONS = [f"{year}-{str(year+1)[-2:]}" for year in range(1999, 2024)]  # 2018-2019 à 2023-2024
 
 def collect_team_gamelog(season: str):
     """
@@ -27,13 +35,10 @@ def collect_team_gamelog(season: str):
     out_path = RAW_DIR / f"team_gamelog_{season}.parquet"
     
     if out_path.exists():
-        print(f"📁 Données déjà présentes pour {season}")
+        print(f"📁 GameLog {season} déjà présent")
         return
 
-    print(f"⏳ Récupération des GameLogs pour la saison {season}…")
-    
     try:
-        # Appel API
         df = LeagueGameLog(
             player_or_team_abbreviation="T",  # "T" pour Team
             season=season,
@@ -41,20 +46,20 @@ def collect_team_gamelog(season: str):
             timeout=60
         ).get_data_frames()[0]
 
-        # Sauvegarde brute sans transformation
         df.to_parquet(out_path, index=False)
-        print(f"✅ Données sauvegardées : {out_path.name}")
+        print(f"✅ {season}: {len(df)} matchs collectés")
 
     except Exception as e:
-        print(f"❌ Erreur lors de la récupération pour {season} : {e}")
+        print(f"❌ Erreur pour {season} : {e}")
+
+    time.sleep(1)  # Petite pause pour éviter d'être bloqué par l'APIpwd
 
 if __name__ == "__main__":
-    print(f"🚀 Lancement de la collecte dans {RAW_DIR.resolve()}")
-    
+    print(f"📦 Collecte des GameLogs dans {RAW_DIR.resolve()}")
     for season in SEASONS:
+        print(f"\n=== Saison {season} ===")
         collect_team_gamelog(season)
-        time.sleep(1)  # Petite pause pour éviter d'être bloqué par l'API
-    
-    print("\n🏁 Collecte des données équipes terminée.")
+    print("\n✅ Collecte des GameLogs terminée.")
 
     
+
