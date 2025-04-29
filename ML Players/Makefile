@@ -32,4 +32,4 @@ predict_future:
 clean_curated:
 	rm -f $(CURATED_DIR)/player_season_*.parquet
 
-all: collect_raw fix_phys prepare_curated compute_rating build_dataset_ml train_model
+all: collect_raw fix_phys prepare_curated compute_rating build_dataset_ml
