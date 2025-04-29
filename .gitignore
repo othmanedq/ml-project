@@ -1,2 +1,27 @@
+# 1. Dossiers de données
+# ignore tous les dossiers nommés data ou data/raw, où qu’ils se trouvent
+**/data/
+**/data/**
+**/data/raw/
+**/data/raw/**
+
+# 2. Fichiers de sortie (tabulaires)
+*.parquet
+*.csv
+
+# 3. Notebooks & dérivés
+.ipynb_checkpoints/
+
+# 4. Python compilé
+__pycache__/
+*.py[cod]
+
+# 5. Environnement & outils locaux
+# macOS
 .DS_Store
-MLTeams/data/
+# VS Code
+.vscode/
+# environnements virtuels
+.env
+.venv/
+venv/
