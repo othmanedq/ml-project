@@ -1,4 +1,4 @@
-# NBA-Rating ML – README
+# NBA-Rating Machine Learning Project
 
 ## 📊 Data, Methods & Sources
 
