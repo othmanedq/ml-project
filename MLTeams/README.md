@@ -7,7 +7,7 @@ Tout repose sur l’analyse et l’exploitation des performances historiques moy
 ## Objectif
 
 Pour chaque confrontation (équipe A vs équipe B), nous construisons un modèle de machine learning capable de prédire si l’équipe A va gagner.  
-Le modèle s’appuie uniquement sur les moyennes statistiques calculées à partir de toutes les performances passées de chaque franchise.
+Le modèle s’appuie uniquement sur les moyennes statistiques calculées à partir de toutes les performances passées à partir de 1999 de chaque franchise.
 
 ## Collecte et préparation des données
 
