@@ -36,3 +36,6 @@ Automatisation dans **`scripts/collect_raw.py`** ; caches parquet sous `nba_rati
 | **Stacking final** | Ensemble Ridge + HGB + LightGBM (+ MLP) avec meta-Ridge : combine linéaire & non-linéaire, ~-2 % RMSE supplémentaire en CV. |
 
 > **Critères de sélection** : performance (RMSE / R², 5-fold CV), robustesse (variance entre folds), temps d’entraînement/prédiction (CI-friendly), interprétabilité (coeffs Ridge, permutation importance HGB/LGBM).
+
+
+Nom des participants : Louis ALLIO — Noa KASSABI — Othmane EDDAQQAQ
