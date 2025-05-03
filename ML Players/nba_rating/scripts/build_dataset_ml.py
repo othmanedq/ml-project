@@ -65,9 +65,16 @@ df_ml = df_all.dropna(subset=["note_n1"]).reset_index(drop=True)
 # 9. Sélection des features pour l’apprentissage
 features_used = [
     "pts_mean", "reb_mean", "ast_mean", "plus_minus_mean",
-    "min_per_game", "avail", "esv_mean", "pace",
-    "height_cm", "bmi", "age", "exp", "delta_score"
+    "efg_pct", "ts_pct",                         # efficacité de tir
+    "stl_mean", "blk_mean", "tov_mean",          # moyennes défensives
+    "pts36", "reb36", "ast36",                   # per36 offensives
+    "stl36", "blk36", "tov36", "pm36",           # per36 défensives et +/-36
+    "min_per_game", "avail",                     # dispo & rythme
+    "esv_mean", "pace",                          # contexte équipe
+    "height_cm", "bmi", "age", "exp",            # biographique
+    "delta_score"                                # évolution passée
 ]
+
 
 # Vérifier qu’aucune feature n’est manquante
 missing = [f for f in features_used if f not in df_ml.columns]

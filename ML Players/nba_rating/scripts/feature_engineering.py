@@ -17,9 +17,8 @@ from pathlib import Path
 RAW     = Path("nba_rating/data/raw")
 CURATED = Path("nba_rating/data/curated")
 
-
 # 1) Détection des saisons disponibles
-files = sorted(RAW.glob("player_gamelog_*.parquet"))
+files   = sorted(RAW.glob("player_gamelog_*.parquet"))
 seasons = [f.stem.split("_")[-1] for f in files]
 
 for season in seasons:
@@ -37,18 +36,18 @@ for season in seasons:
     # Agrégation par joueur
     agg = df_raw.groupby("PLAYER_ID").agg(
         efg_pct    = ("efg_pct", "mean"),
-        ts_pct     = ("ts_pct", "mean"),
-        stl_mean   = ("STL",    "mean"),
-        blk_mean   = ("BLK",    "mean"),
-        tov_mean   = ("TOV",    "mean"),
-        pts_total  = ("PTS",    "sum" ),
-        reb_total  = ("REB",    "sum" ),
-        ast_total  = ("AST",    "sum" ),
-        stl_total  = ("STL",    "sum" ),
-        blk_total  = ("BLK",    "sum" ),
-        tov_total  = ("TOV",    "sum" ),
-        min_total  = ("MIN",    "sum" ),
-        pm_total   = ("PLUS_MINUS","sum")
+        ts_pct     = ("ts_pct",  "mean"),
+        stl_mean   = ("STL",     "mean"),
+        blk_mean   = ("BLK",     "mean"),
+        tov_mean   = ("TOV",     "mean"),
+        pts_total  = ("PTS",     "sum" ),
+        reb_total  = ("REB",     "sum" ),
+        ast_total  = ("AST",     "sum" ),
+        stl_total  = ("STL",     "sum" ),
+        blk_total  = ("BLK",     "sum" ),
+        tov_total  = ("TOV",     "sum" ),
+        min_total  = ("MIN",     "sum" ),
+        pm_total   = ("PLUS_MINUS", "sum")
     )
 
     # 4) Calcul des per36 (incluant pm)
@@ -58,8 +57,8 @@ for season in seasons:
         "pm_total":  "pm36"
     }
     for raw_col, new_col in per36_map.items():
-        # Attention division par zéro remplacée par NaN
-        agg[new_col] = agg[raw_col] * (36 / agg["min_total"]).replace([float('inf'), -float('inf')], pd.NA)
+        agg[new_col] = agg[raw_col] * (36 / agg["min_total"]) \
+                        .replace([float('inf'), -float('inf')], pd.NA)
 
     # 5) Sélection des nouvelles features
     new_feats = agg[[
@@ -69,9 +68,10 @@ for season in seasons:
     ]].reset_index()
 
     # 6) Merge avec le fichier season déjà curé
-    ps = pd.read_parquet(CURATED / f"player_season_{season}.parquet")
+    ps     = pd.read_parquet(CURATED / f"player_season_{season}.parquet")
     df_out = ps.merge(new_feats, on="PLAYER_ID", how="left")
 
     # 7) Sauvegarde
     df_out.to_parquet(CURATED / f"player_season_{season}.parquet", index=False)
     print(f"✅ Features avancées ajoutées pour {season}")
+
