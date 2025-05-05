@@ -94,9 +94,5 @@ Plusieurs pistes peuvent améliorer la performance du modèle :
 - Calculer des différences statistiques entre A et B plutôt que de concaténer uniquement leurs profils
 - Fusionner avec les données joueur-par-joueur pour une approche mixte
 
-Un fichier `Makefile` est fourni à la racine du projet pour automatiser toutes les étapes du pipeline :  
-- collecte des données (`collect_team_data.py`)
-- préparation du fichier `.parquet`
-- exécution des notebooks d’exploration et de modélisation
-
-Cela permet d'exécuter tout le processus de bout en bout avec une simple commande, comme :
+Un fichier `Makefile` est inclus pour automatiser les étapes du pipeline (collecte, nettoyage, exécution des notebooks).  
+Il suffit de taper des commandes comme `make all` ou `make model_final` pour exécuter le projet de bout en bout.
