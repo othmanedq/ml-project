@@ -18,10 +18,13 @@ __pycache__/
 
 # 5. Environnement & outils locaux
 # macOS
-.DS_Store
+**/.DS_Store
 # VS Code
 .vscode/
 # environnements virtuels
 .env
 .venv/
 venv/
+
+# 6. Autres
+ML\ Players/nba_rating/tests/
