@@ -20,7 +20,11 @@ compute_rating:
 feature_engineering:
 	python nba_rating/scripts/feature_engineering.py
 
-build_dataset_ml:
+cluster_players:
+	python nba_rating/scripts/cluster_players.py
+
+build_dataset_ml: cluster_players
+
 	python nba_rating/scripts/build_dataset_ml.py
 
 train_model:
@@ -35,4 +39,4 @@ predict_future:
 clean_curated:
 	rm -f $(CURATED_DIR)/player_season_*.parquet
 
-all: collect_raw fix_phys prepare_curated compute_rating feature_engineering build_dataset_ml
+all: collect_raw fix_phys prepare_curated feature_engineering compute_rating build_dataset_ml

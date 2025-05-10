@@ -56,6 +56,7 @@ for season in seasons:
         "stl_total": "stl36", "blk_total": "blk36", "tov_total": "tov36",
         "pm_total":  "pm36"
     }
+    # Évite la division par zéro
     for raw_col, new_col in per36_map.items():
         agg[new_col] = agg[raw_col] * (36 / agg["min_total"]) \
                         .replace([float('inf'), -float('inf')], pd.NA)
@@ -74,4 +75,3 @@ for season in seasons:
     # 7) Sauvegarde
     df_out.to_parquet(CURATED / f"player_season_{season}.parquet", index=False)
     print(f"✅ Features avancées ajoutées pour {season}")
-
