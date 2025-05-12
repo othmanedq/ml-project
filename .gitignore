@@ -5,6 +5,10 @@
 **/data/raw/
 **/data/raw/**
 
+# logo
+**/logos/
+**/logos/**
+
 # 2. Fichiers de sortie (tabulaires)
 *.parquet
 *.csv
