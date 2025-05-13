@@ -36,6 +36,12 @@ compare_models:
 predict_future:
 	python nba_rating/scripts/predict_future.py
 
+rassemble_gamelogs:
+	python nba_rating/scripts/rassemble_gamelogs.py
+
+generate_ws_vorp: rassemble_gamelogs
+	python nba_rating/scripts/generate_ws_vorp.py
+
 clean_curated:
 	rm -f $(CURATED_DIR)/player_season_*.parquet
 
