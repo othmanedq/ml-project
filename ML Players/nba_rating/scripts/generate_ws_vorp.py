@@ -84,6 +84,20 @@ LOGS_UNI    = CURATED_DIR / "all_player_gamelogs.parquet"
 if not LOGS_UNI.exists():
     raise FileNotFoundError("…lance d'abord rassemble_gamelogs.py…")
 
+# 0) Vérifier si wins_shares_vorp.parquet existe et est complet
+if OUT_PATH.exists():
+    try:
+        existing_ws = pd.read_parquet(OUT_PATH)
+        expected_seasons = [f"{y-1}-{str(y)[2:]}" for y in range(2000, 2025)]
+        missing = set(expected_seasons) - set(existing_ws["season"].unique())
+        if not missing:
+            print(f"🔄 {OUT_PATH.name} déjà à jour, saisons couvertes : {sorted(expected_seasons)}. Sortie.")
+            exit(0)
+        else:
+            print(f"⚠️ {OUT_PATH.name} incomplet, saisons manquantes : {sorted(missing)}. Relancement du scraping.")
+    except Exception as e:
+        print(f"⚠️ Impossible de lire {OUT_PATH.name} ({e}), exécution du scraping.")
+
 # 1) Scraping → df_ws
 years, dfs = range(2000,2025), []
 for y in years:
