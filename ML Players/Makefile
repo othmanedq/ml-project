@@ -42,7 +42,10 @@ rassemble_gamelogs:
 generate_ws_vorp: rassemble_gamelogs
 	python nba_rating/scripts/generate_ws_vorp.py
 
+dashboard_data:
+	python nba_rating/scripts/dashboard_data.py
+
 clean_curated:
 	rm -f $(CURATED_DIR)/player_season_*.parquet
 
-all: collect_raw fix_phys prepare_curated feature_engineering compute_rating build_dataset_ml
+all: collect_raw fix_phys prepare_curated feature_engineering compute_rating build_dataset_ml generate_ws_vorp dashboard_data
