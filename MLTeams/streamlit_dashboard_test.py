@@ -12,40 +12,82 @@ st.set_page_config(
     page_icon="🏀"
 )
 
-# ─── 2) INJECTION DU CSS + GOOGLE FONT + FOND BASKET ───────────────────────────
+# ─── 2) INJECTION DU CSS : FOND + OVERLAY + ENCADRÉS ──────────────────────────
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+
 <style>
-  /* Fond terrain de basket + fallback color */
+  /* --- On annule tout background sur l'app --- */
   .stApp {
-    background:
-      url("https://media.istockphoto.com/id/499753204/fr/vectoriel/illustration-réaliste-vertical-terrain-de-basket-ball.jpg") center/cover no-repeat,
-      #f9f9fb;
-    font-family: 'Segoe UI', sans-serif;
+    position: relative !important;
+    background: none !important;
   }
-  /* Sidebar */
-  .sidebar .sidebar-content { background-color: #fff; }
-  /* Titres */
+
+  /* --- Pseudo-élément pour l'image + overlay semi-opaque --- */
+  .stApp::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      /* Overlay semi-opaque (noir à 50%) */
+      linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+      /* Image de fond */
+      url("https://m.media-amazon.com/images/I/71vnTbuSmNL.jpg") center/cover no-repeat;
+    filter: blur(3px);  /* Optionnel : léger flou */
+    z-index: -1;
+  }
+
+  /* --- On remet le contenu au-dessus --- */
+  .stApp > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* --- Encadrés transparents pour chaque bloc de contenu --- */
+  .stApp .main .block-container .element-container {
+    background-color: rgba(255,255,255,0.85) !important;
+    padding: 1rem !important;
+    border-radius: 12px !important;
+    margin-bottom: 1rem !important;
+  }
+  .stApp .main .block-container .element-container > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* --- Sidebar semi-transparente --- */
+  .sidebar .sidebar-content {
+    background-color: rgba(30, 30, 30, 0.8);
+    color: #FFF;
+  }
+  .sidebar .sidebar-content select, 
+  .sidebar .sidebar-content input {
+    color: #000;
+  }
+
+  /* --- Titres --- */
   h1,h2,h3,h4 {
     font-family: 'Anton', sans-serif;
-    color: #C9082A;
+    color: #FFFFFF;
     font-weight: 300;
     margin-bottom: 0.3em;
   }
-  /* Boutons primaires */
+
+  /* --- Boutons primaires --- */
   button[kind="primary"] {
-    background-color: #C9082A;
-    color: #fff;
-    border-radius: 8px;
-    padding: 0.5em 1.5em;
-    font-weight: bold;
+    background-color: #C9082A !important;
+    color: #fff !important;
+    border-radius: 8px !important;
+    padding: 0.5em 1.5em !important;
+    font-weight: bold !important;
   }
   button[kind="primary"]:hover {
-    background-color: #8A0C19;
+    background-color: #8A0C19 !important;
   }
-  /* Metric Cards */
+
+  /* --- Metric Cards --- */
   .metric-card {
-    background: #fff;
+    background: rgba(255,255,255,0.9);
     border-radius: 12px;
     padding: 1.2rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
@@ -114,12 +156,12 @@ home_color = "#C9082A"
 away_color = "#17408B"
 
 # ─── 4) STRUCTURE EN TABS ─────────────────────────────────────────────────────
-tab1, tab2 = st.tabs(["📊 Stats Équipe", "🏀 Match Simulé"])
+tab1, tab2 = st.tabs(["Stats Équipe", "Match Simulé"])
 
-# Onglet 1 : Statistiques par équipe
+# — Onglet 1 : Statistiques par équipe
 with tab1:
     st.title("Statistiques NBA par Équipe")
-    st.sidebar.subheader("🎯 Filtres")
+    st.sidebar.subheader("Filtres")
     y1, y2 = st.sidebar.slider(
         "Période",
         min_value=all_years[0],
@@ -161,13 +203,12 @@ with tab1:
         st.subheader("Distribution des points")
         hist = (
             alt.Chart(df_team)
-            .mark_bar(color=home_color)
-            .encode(
-                alt.X("pts:Q", bin=alt.Bin(maxbins=25), title="Points"),
-                y="count()",
-                tooltip=["count()"]
-            )
-            .properties(height=300)
+               .mark_bar(color=home_color)
+               .encode(
+                   alt.X("pts:Q", bin=alt.Bin(maxbins=25), title="Points"),
+                   y="count()", tooltip=["count()"]
+               )
+               .properties(height=300)
         )
         st.altair_chart(hist, use_container_width=True)
 
@@ -176,19 +217,19 @@ with tab1:
         avg = df_team.groupby("year", as_index=False)["pts"].mean()
         line = (
             alt.Chart(avg)
-            .mark_line(point=True, color=home_color)
-            .encode(
-                x=alt.X("year:O",  title="Année"),
-                y=alt.Y("pts:Q",   title="Points moyens"),
-                tooltip=["year","pts"]
-            )
-            .properties(height=300)
+               .mark_line(point=True, color=home_color)
+               .encode(
+                   x=alt.X("year:O", title="Année"),
+                   y=alt.Y("pts:Q", title="Points moyens"),
+                   tooltip=["year","pts"]
+               )
+               .properties(height=300)
         )
         st.altair_chart(line, use_container_width=True)
 
-# Onglet 2 : Simulation de match
+# — Onglet 2 : Simulation de match
 with tab2:
-    st.title("🏀 Affiche Officielle du Match NBA")
+    st.title("Affiche Officielle du Match NBA")
     model_name = st.selectbox("Modèle", all_models)
 
     c1, c2 = st.columns(2)
@@ -226,7 +267,7 @@ with tab2:
             st.markdown("### 📍 Résultat & Analyse")
             st.success(f"✅ {winner} devrait gagner ({conf:.1f}% de confiance)")
             st.markdown(
-                f"<h2 style='text-align:center; color:{home_color if pred==1 else away_color};'>{home} {score_home} – {score_away} {away}</h2>",
+                f"<div style='text-align:center;'><h2 style='color:{home_color if pred==1 else away_color};'>{home} {score_home} – {score_away} {away}</h2></div>",
                 unsafe_allow_html=True
             )
             st.markdown(f"**Marge attendue** : **{abs(score_home-score_away)}** points")
@@ -234,19 +275,19 @@ with tab2:
             # Forme récente
             df_last5 = (
                 df.query("team==@home")
-                  .sort_values(by="date", ascending=False)
+                  .sort_values("date", ascending=False)
                   .head(5)
-                  .sort_values(by="date")
+                  .sort_values("date")
             )
             st.markdown("### 🏃‍♂️ Forme récente (5 derniers matchs)")
             form = (
                 alt.Chart(df_last5)
-                .mark_line(point=True, color=home_color)
-                .encode(
-                    x=alt.X("date:T", title="Date", axis=alt.Axis(format="%d %b")),
-                    y=alt.Y("pts:Q", title="Points")
-                )
-                .properties(height=250)
+                   .mark_line(point=True, color=home_color)
+                   .encode(
+                       x=alt.X("date:T", title="Date", axis=alt.Axis(format="%d %b")),
+                       y=alt.Y("pts:Q", title="Points")
+                   )
+                   .properties(height=250)
             )
             st.altair_chart(form, use_container_width=True)
 
@@ -258,28 +299,25 @@ with tab2:
             qh = simulate_quarters(score_home)
             qa = simulate_quarters(score_away)
             df_q = pd.DataFrame({
-                "Quart-temps": ["Q1","Q2","Q3","Q4"]*2,
+                "Quart-temps": ["Q1","Q2","Q3","Q4"] * 2,
                 "Points":       qh + qa,
                 "Équipe":       [home]*4 + [away]*4
             })
             st.markdown("### 📊 Timeline du match (par quart-temps)")
             timeline = (
                 alt.Chart(df_q)
-                .mark_bar()
-                .encode(
-                    x=alt.X("Quart-temps:O", title="Quart-temps"),
-                    y=alt.Y("Points:Q",   title="Pts"),
-                    color=alt.Color(
-                        "Équipe:N",
-                        scale=alt.Scale(
-                            domain=[home, away],
-                            range=[home_color, away_color]
-                        ),
-                        legend=alt.Legend(title="Équipe")
-                    ),
-                    tooltip=["Équipe","Points"]
-                )
-                .properties(height=300)
+                   .mark_bar()
+                   .encode(
+                       x=alt.X("Quart-temps:O", title="Quart-temps"),
+                       y=alt.Y("Points:Q", title="Pts"),
+                       color=alt.Color(
+                           "Équipe:N",
+                           scale=alt.Scale(domain=[home, away], range=[home_color, away_color]),
+                           legend=alt.Legend(title="Équipe")
+                       ),
+                       tooltip=["Équipe","Points"]
+                   )
+                   .properties(height=300)
             )
             st.altair_chart(timeline, use_container_width=True)
 
