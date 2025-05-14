@@ -1,7 +1,8 @@
 # ML Players
 
 > ⚠️ Projet – Système de notation et prédiction des performances NBA.
-Lien de la présentation : 
+
+Lien de la présentation : https://bit.ly/NBAmlproject
 
 ## Table des matières
 
