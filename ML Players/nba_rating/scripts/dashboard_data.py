@@ -38,6 +38,20 @@ OUT        = CURATED / "dashboard_data.parquet"
 print(f"🔄 Chargement      : {IN_DS.name}")
 df = pd.read_parquet(IN_DS)
 
+# 2a) Enrichissement : rattacher poste et équipe pour chaque saison
+from pathlib import Path
+# Rassembler les informations de position et équipe depuis player_season files
+season_files = sorted(Path(CURATED).glob("player_season_*.parquet"))
+frames = []
+for path in season_files:
+    season = path.stem.split("_")[-1]
+    ps = pd.read_parquet(path, columns=["PLAYER_ID", "POSITION", "TEAM_ID"])
+    ps = ps.rename(columns={"POSITION": "position", "TEAM_ID": "team"})
+    ps["season"] = season
+    frames.append(ps)
+pos_team_df = pd.concat(frames, ignore_index=True)
+df = df.merge(pos_team_df, on=["PLAYER_ID", "season"], how="left")
+
 # 2a) Fusion du score_100 depuis all_seasons_scores.parquet
 SCORES_PATH = CURATED / "all_seasons_scores.parquet"
 if SCORES_PATH.exists():
@@ -83,12 +97,12 @@ if LOGS_ALL.exists():
     # Supprimer colonnes intermédiaires
     df = df.drop(columns=[c for c in ["player_name_old","player_name_new"] if c in df.columns])
 
-    # 4) Construire l'URL de la photo headshot
+    # 3) Construire l'URL de la photo headshot
     df["photo_url"] = df["PLAYER_ID"].apply(lambda pid: make_photo_url(pid))
 else:
     print(f"⚠️ Fichier introuvable : {LOGS_ALL.name} ➔ noms non ajoutés")
 
-# 5) Fusion Win Shares / VORP
+# 4) Fusion Win Shares / VORP
 if IN_WS.exists():
     print(f"🔄 Fusion WS/VORP  : {IN_WS.name}")
     ws = pd.read_parquet(IN_WS).drop_duplicates(subset=["PLAYER_ID","season"])
@@ -96,7 +110,7 @@ if IN_WS.exists():
 else:
     print(f"⚠️ Fichier introuvable : {IN_WS.name}\n   Aucun Win Shares/VORP ajouté")
 
-# 6) Fusion Clusters
+# 5) Fusion Clusters
 if IN_CL.exists():
     print(f"🔄 Fusion clusters : {IN_CL.name}")
     cl = pd.read_parquet(IN_CL).drop_duplicates(subset=["PLAYER_ID","season"])
@@ -111,6 +125,23 @@ if IN_CL.exists():
 else:
     print(f"⚠️ Fichier introuvable : {IN_CL.name}\n   Aucun cluster ajouté")
 
-# 7) Écriture du fichier final
+# 5a) Fusion des projections ML (predict_future)
+PROJ_PATH = CURATED / "projections.parquet"
+if PROJ_PATH.exists():
+    print(f"🔄 Fusion projections : {PROJ_PATH.name}")
+    proj_df = pd.read_parquet(PROJ_PATH)
+    # On s'attend à colonnes ['PLAYER_ID','horizon','pred_score']
+    # Pivot pour avoir une colonne par horizon
+    proj_wide = proj_df.pivot(
+        index="PLAYER_ID", 
+        columns="horizon", 
+        values="pred_score"
+    ).add_prefix("proj_")
+    proj_wide = proj_wide.reset_index()
+    df = df.merge(proj_wide, on="PLAYER_ID", how="left")
+else:
+    print(f"⚠️ Fichier introuvable : {PROJ_PATH.name} ➔ projections non ajoutées")
+
+# 6) Écriture du fichier final
 print(f"✅ Écriture        : {OUT.name} → {len(df)} lignes × {len(df.columns)} colonnes")
 df.to_parquet(OUT, index=False)

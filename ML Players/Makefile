@@ -33,7 +33,7 @@ train_model:
 compare_models:
 	jupyter nbconvert --to notebook --execute nba_rating/notebooks/compare_models.ipynb --inplace
 
-predict_future:
+predict_future: build_dataset_ml
 	python nba_rating/scripts/predict_future.py
 
 rassemble_gamelogs:
@@ -42,10 +42,10 @@ rassemble_gamelogs:
 generate_ws_vorp: rassemble_gamelogs
 	python nba_rating/scripts/generate_ws_vorp.py
 
-dashboard_data:
+dashboard_data: build_dataset_ml predict_future
 	python nba_rating/scripts/dashboard_data.py
 
 clean_curated:
 	rm -f $(CURATED_DIR)/player_season_*.parquet
 
-all: collect_raw fix_phys prepare_curated feature_engineering compute_rating build_dataset_ml generate_ws_vorp dashboard_data
+all: collect_raw fix_phys prepare_curated feature_engineering compute_rating build_dataset_ml generate_ws_vorp dashboard_data predict_future

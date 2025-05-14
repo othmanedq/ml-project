@@ -2,50 +2,119 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import streamlit.components.v1 as components
+import os
+
+# --- Ajout TEAM_INFO pour logos et abréviations ---
+TEAM_INFO = {
+    1610612737: ('ATL', 'https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg'),
+    1610612738: ('BOS', 'https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg'),
+    1610612739: ('CLE', 'https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg'),
+    1610612740: ('NOP', 'https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg'),
+    1610612741: ('CHI', 'https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg'),
+    1610612742: ('DAL', 'https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg'),
+    1610612743: ('DEN', 'https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg'),
+    1610612744: ('GSW', 'https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg'),
+    1610612745: ('HOU', 'https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg'),
+    1610612746: ('LAC', 'https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg'),
+    1610612747: ('LAL', 'https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg'),
+    1610612748: ('MIA', 'https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg'),
+    1610612749: ('MIL', 'https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg'),
+    1610612750: ('MIN', 'https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg'),
+    1610612751: ('BKN', 'https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg'),
+    1610612752: ('NYK', 'https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg'),
+    1610612753: ('ORL', 'https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg'),
+    1610612754: ('IND', 'https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg'),
+    1610612755: ('PHI', 'https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg'),
+    1610612756: ('PHX', 'https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg'),
+    1610612757: ('POR', 'https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg'),
+    1610612758: ('SAC', 'https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg'),
+    1610612759: ('SAS', 'https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg'),
+    1610612760: ('OKC', 'https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg'),
+    1610612761: ('TOR', 'https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg'),
+    1610612762: ('UTA', 'https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg'),
+    1610612763: ('MEM', 'https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg'),
+    1610612764: ('WAS', 'https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg'),
+    1610612765: ('DET', 'https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg'),
+    1610612766: ('CHA', 'https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg'),
+}
 
 # --- Ajout helper carte joueur ---
 from PIL import Image, ImageDraw, ImageFont
 import requests
 from io import BytesIO
 
-def generate_player_card(template_path, player_photo_url, team_logo_url, position, team_name, score, player_name):
+def generate_player_card(template_path, player_photo_url, team_id, position, score, player_name):
     # 1) Charger le template
     template = Image.open(template_path).convert("RGBA")
-    # 2) Récupérer et masquer la photo du joueur
+    GOLD = (212, 175, 55, 255)  # couleur or
+    # 2) Récupérer la photo du joueur et appliquer un masque circulaire
     resp = requests.get(player_photo_url)
     player_img = Image.open(BytesIO(resp.content)).convert("RGBA")
-    size = (300, 300)
+    # Agrandir la photo du joueur de 40%
+    size = (int(500), int(500))
     player_img = player_img.resize(size)
+    # Créer un masque circulaire pour ne conserver que le visage
     mask = Image.new("L", size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0) + size, fill=255)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.ellipse((0, 0) + size, fill=255)
     player_img.putalpha(mask)
-    template.paste(player_img, (int((template.width-size[0])/2), 80), player_img)
-    # 3) Récupérer le logo et coller en haut à droite
-    resp = requests.get(team_logo_url)
-    logo_img = Image.open(BytesIO(resp.content)).convert("RGBA")
-    logo_size = (80, 80)
-    logo_img = logo_img.resize(logo_size)
-    template.paste(logo_img, (template.width-logo_size[0]-30, 30), logo_img)
+    # Calcul des coordonnées centrées sur le template
+    x_pos = (template.width - size[0]) // 2
+    y_pos = int(template.height * 0.27)
+    # Effacer le fond à l'intérieur du cercle (rendre transparent)
+    draw_template = ImageDraw.Draw(template)
+    circle_bbox = (x_pos, y_pos, x_pos + size[0], y_pos + size[1])
+    draw_template.ellipse(circle_bbox, fill=(0, 0, 0, 0))
+    # Coller ensuite la photo du joueur masquée
+    template.paste(player_img, (x_pos, y_pos), player_img)
+    # 3) (Suppression du collage du logo sur le template)
     # 4) Dessiner le texte
     draw = ImageDraw.Draw(template)
+    # Chargement des polices avec plusieurs fallback pour garantir une taille lisible
     try:
         font_large = ImageFont.truetype("arial.ttf", 36)
         font_small = ImageFont.truetype("arial.ttf", 24)
     except IOError:
-        font_large = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-    # Nom du joueur
-    w, h = draw.textsize(player_name, font=font_large)
-    draw.text(((template.width-w)/2, 400), player_name, font=font_large, fill="white")
-    # Position & équipe
-    pt = f"{position} - {team_name}"
-    w2, h2 = draw.textsize(pt, font=font_small)
-    draw.text(((template.width-w2)/2, 440), pt, font=font_small, fill="white")
-    # Score
-    sc = f"Score: {score:.1f}"
-    w3, h3 = draw.textsize(sc, font=font_small)
-    draw.text(((template.width-w3)/2, template.height-60), sc, font=font_small, fill="gold")
+        try:
+            # macOS system font
+            font_large = ImageFont.truetype("/Library/Fonts/Arial.ttf", 70)
+            font_small = ImageFont.truetype("/Library/Fonts/Arial.ttf", 60)
+        except IOError:
+            try:
+                # common Linux fallback
+                font_large = ImageFont.truetype("DejaVuSans.ttf", 36)
+                font_small = ImageFont.truetype("DejaVuSans.ttf", 24)
+            except IOError:
+                # dernier recours : police par défaut (mais petite)
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+    # Nom du joueur au-dessus du trait
+    name_y = template.height * 0.65
+    bbox = draw.textbbox((0, 0), player_name, font=font_large)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text(((template.width - w) / 2, name_y), player_name, font=font_large, fill=GOLD)
+
+    # Afficher poste, équipe et note sous la ligne en or
+    info_y = name_y + h + 150
+
+    # Position (gauche)
+    pos_text = str(position)
+    pos_bbox = draw.textbbox((0, 0), pos_text, font=font_small)
+    pos_w = pos_bbox[2] - pos_bbox[0]
+    draw.text((template.width * 0.24 - pos_w/2, info_y), pos_text, font=font_small, fill=GOLD)
+
+    # Team abbreviation (centre)
+    abbrev, _ = TEAM_INFO.get(int(team_id), ("", None))
+    team_text = str(abbrev)
+    team_bbox = draw.textbbox((0, 0), team_text, font=font_small)
+    team_w = team_bbox[2] - team_bbox[0]
+    draw.text((template.width * 0.5 - team_w/2, info_y), team_text, font=font_small, fill=GOLD)
+
+    # Score (droite)
+    score_text = f"{score:.1f}"
+    score_bbox = draw.textbbox((0, 0), score_text, font=font_small)
+    score_w = score_bbox[2] - score_bbox[0]
+    draw.text((template.width * 0.75 - score_w/2, info_y), score_text, font=font_small, fill=GOLD)
     return template
 
 # 1) Chargement des données (en cache)
@@ -62,6 +131,9 @@ player_col  = next((c for c in df.columns if c.lower() == "player_id"), None)
 name_col    = next((c for c in df.columns if "name" in c.lower()), None)
 cluster_col = next((c for c in df.columns if "cluster" in c.lower()), None)
 score_col   = next((c for c in df.columns if c.lower() == "score_100"), None)
+# Colonnes position et équipe
+position_col = next((c for c in df.columns if "position" in c.lower()), None)
+team_col     = next((c for c in df.columns if "team_name" in c.lower() or c.lower()=="team"), None)
 
 # On stoppe si colonnes manquantes
 if season_col is None or player_col is None or score_col is None:
@@ -241,22 +313,48 @@ with tabs[0]:
             p_df = df[df[name_col] == sel_player].sort_values(season_col)
 
         # Affichage sous forme de carte
-        template_path = "assets/template.png"  # chemin vers votre fond de carte
+        # récupérer position et équipe
+        position  = p_df[position_col].iloc[0] if position_col else ""
+        template_path    = "assets/template.png"
         player_photo_url = p_df["photo_url"].iloc[0]
-        team_logo_url = p_df["team_logo_url"].iloc[0] if "team_logo_url" in p_df.columns else ""
-        score_val = p_df[score_col].iloc[-1]
-        st.image(
-            generate_player_card(
-                template_path,
-                player_photo_url,
-                team_logo_url,
-                p_df["position"].iloc[0] if "position" in p_df.columns else "",
-                p_df["team"].iloc[0] if "team" in p_df.columns else "",
-                score_val,
-                sel_player
-            ),
-            use_column_width=False
-        )
+        score_val        = p_df[score_col].iloc[-1]
+       # Affichage du card et du logo SVG à droite
+        # On alloue plus d'espace à la carte et centre le logo
+        col_card, col_logo = st.columns([1, 1])
+
+        # Carte joueur (garde width=300)
+        with col_card:
+            st.image(
+                generate_player_card(
+                    template_path,
+                    player_photo_url,
+                    p_df["team"].iloc[0],
+                    position,
+                    score_val,
+                    sel_player
+                ),
+                width=300
+            )
+
+        # Logo SVG à droite, centré verticalement
+        with col_logo:
+            abbrev, logo_url = TEAM_INFO.get(int(p_df["team"].iloc[0]), ("", None))
+            if logo_url:
+                # Centrer verticalement le logo à côté de la carte
+                st.markdown(
+                    f"""
+                    <div style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      height: 400px; /* Ajuster selon la hauteur du card */
+                    ">
+                      <img src="{logo_url}" width="300" />
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
 
         # Vidéo de highlights
         if "yt_clip_url" in p_df.columns and pd.notna(p_df["yt_clip_url"].iloc[0]):
