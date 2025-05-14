@@ -18,6 +18,12 @@ Usage :
 import pandas as pd
 from pathlib import Path
 
+def make_photo_url(player_id: int, size: str = "260x190") -> str:
+    """
+    Construit l'URL publique du headshot NBA pour un joueur donné.
+    """
+    return f"https://cdn.nba.com/headshots/nba/latest/{size}/{int(player_id)}.png"
+
 # 1) Définition des chemins
 BASE       = Path(__file__).resolve().parents[1] / "data"
 CURATED    = BASE / "curated"
@@ -76,10 +82,13 @@ if LOGS_ALL.exists():
         df["player_name"] = df["player_name_new"]
     # Supprimer colonnes intermédiaires
     df = df.drop(columns=[c for c in ["player_name_old","player_name_new"] if c in df.columns])
+
+    # 4) Construire l'URL de la photo headshot
+    df["photo_url"] = df["PLAYER_ID"].apply(lambda pid: make_photo_url(pid))
 else:
     print(f"⚠️ Fichier introuvable : {LOGS_ALL.name} ➔ noms non ajoutés")
 
-# 4) Fusion Win Shares / VORP
+# 5) Fusion Win Shares / VORP
 if IN_WS.exists():
     print(f"🔄 Fusion WS/VORP  : {IN_WS.name}")
     ws = pd.read_parquet(IN_WS).drop_duplicates(subset=["PLAYER_ID","season"])
@@ -87,7 +96,7 @@ if IN_WS.exists():
 else:
     print(f"⚠️ Fichier introuvable : {IN_WS.name}\n   Aucun Win Shares/VORP ajouté")
 
-# 5) Fusion Clusters
+# 6) Fusion Clusters
 if IN_CL.exists():
     print(f"🔄 Fusion clusters : {IN_CL.name}")
     cl = pd.read_parquet(IN_CL).drop_duplicates(subset=["PLAYER_ID","season"])
@@ -102,6 +111,6 @@ if IN_CL.exists():
 else:
     print(f"⚠️ Fichier introuvable : {IN_CL.name}\n   Aucun cluster ajouté")
 
-# 6) Écriture du fichier final
+# 7) Écriture du fichier final
 print(f"✅ Écriture        : {OUT.name} → {len(df)} lignes × {len(df.columns)} colonnes")
 df.to_parquet(OUT, index=False)
