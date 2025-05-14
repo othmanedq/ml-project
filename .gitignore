@@ -31,4 +31,4 @@ __pycache__/
 venv/
 
 # 6. Autres
-ML\ Players/nba_rating/tests/
+ML\ Players/nba_rating/tests/*.ipynb
