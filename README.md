@@ -1,6 +1,7 @@
 # ML Players
 
-> ⚠️ Projet scolaire – Système de notation et prédiction des performances NBA.
+> ⚠️ Projet – Système de notation et prédiction des performances NBA.
+Lien de la présentation : 
 
 ## Table des matières
 
