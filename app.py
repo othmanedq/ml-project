@@ -1,7 +1,19 @@
+# Mapping des postes acronyme → nom complet
+POS_MAPPING = {
+    "PG": "Point Guard",
+    "SG": "Shooting Guard",
+    "SF": "Small Forward",
+    "PF": "Power Forward",
+    "C":  "Center",
+    "G": "Guard",
+    "F": "Forward"
+}
 import streamlit as st
 import pandas as pd
 import altair as alt
 import streamlit.components.v1 as components
+import re, urllib.parse
+from functools import lru_cache
 import os
 import numpy as np
 from datetime import date
@@ -103,7 +115,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
+# Descriptions des profils de cluster
+CLUSTER_DESCRIPTIONS = {
+    'Playmaker': 'Maîtrise du jeu, distribution et vision du terrain',
+    'All-Around': 'Polyvalent dans toutes les facettes du jeu',
+    'Scoring Guard': 'Principalement axé sur la création et la finition au scoring',
+    'Big Man': 'Présence dans la raquette et rebonds',
+    'Sharpshooter': 'Excellence au tir extérieur'
+}
 # --- Ajout TEAM_INFO pour logos et abréviations ---
 TEAM_INFO = {
     1610612737: ('ATL', 'https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg'),
@@ -144,6 +163,8 @@ import requests
 from io import BytesIO
 
 def generate_player_card(template_path, player_photo_url, team_id, position, score, player_name):
+    # Initialize abbrev to avoid UnboundLocalError
+    abbrev = ""
     # 1) Charger le template
     template = Image.open(template_path).convert("RGBA")
     GOLD = (212, 175, 55, 255)  # couleur or
@@ -153,7 +174,7 @@ def generate_player_card(template_path, player_photo_url, team_id, position, sco
     # Agrandir la photo du joueur de 40%
     size = (int(500), int(500))
     player_img = player_img.resize(size)
-    # Créer un masque circulaire pour ne conserver que le visage
+
     mask = Image.new("L", size, 0)
     mask_draw = ImageDraw.Draw(mask)
     mask_draw.ellipse((0, 0) + size, fill=255)
@@ -204,8 +225,12 @@ def generate_player_card(template_path, player_photo_url, team_id, position, sco
     draw.text((template.width * 0.24 - pos_w/2, info_y), pos_text, font=font_small, fill=GOLD)
 
     # Team abbreviation (centre)
-    abbrev, _ = TEAM_INFO.get(int(team_id), ("", None))
-    team_text = str(abbrev)
+        # --- Fallback : si team_id est déjà une abréviation texte (ex : "DEN") ----
+    if abbrev == "":
+        team_str = str(team_id)
+        if len(team_str) == 3 and team_str.isalpha():
+            abbrev = team_str.upper()
+    team_text = str(abbrev) if abbrev else ""
     team_bbox = draw.textbbox((0, 0), team_text, font=font_small)
     team_w = team_bbox[2] - team_bbox[0]
     draw.text((template.width * 0.5 - team_w/2, info_y), team_text, font=font_small, fill=GOLD)
@@ -216,6 +241,25 @@ def generate_player_card(template_path, player_photo_url, team_id, position, sco
     score_w = score_bbox[2] - score_bbox[0]
     draw.text((template.width * 0.75 - score_w/2, info_y), score_text, font=font_small, fill=GOLD)
     return template
+
+# Helper: fetch first YouTube highlight for a player (scraping, no API)
+@lru_cache(maxsize=256)
+def fetch_highlight_url(player: str) -> str | None:
+    """
+    Retourne l’URL du premier résultat YouTube pour « {player} highlights »  
+    (scraping HTML – pas d’API officielle).
+    """
+    query = urllib.parse.quote_plus(f"{player} highlights")
+    resp  = requests.get(
+        f"https://www.youtube.com/results?search_query={query}",
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
+    if resp.status_code != 200:
+        return None
+
+    # Les IDs vidéo (11 caractères) sont dans le JSON initial de la page
+    ids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', resp.text)
+    return f"https://www.youtube.com/watch?v={ids[0]}" if ids else None
 
 # 1) Chargement des données (en cache)
 @st.cache_data
@@ -231,10 +275,36 @@ season_col  = next((c for c in df.columns if c.lower() == "season"), None)
 player_col  = next((c for c in df.columns if c.lower() == "player_id"), None)
 name_col    = next((c for c in df.columns if "name" in c.lower()), None)
 cluster_col = next((c for c in df.columns if "cluster" in c.lower()), None)
-score_col   = next((c for c in df.columns if c.lower() == "score_100"), None)
+# Recherche flexible de la colonne score
+score_col = next((c for c in df.columns if c.lower() == "score_100"), None)
+if score_col is None:
+    # Fallback : chercher la première colonne qui contient l'un des mots‑clés
+    keywords = ["score", "rating", "overall", "index"]
+    score_candidates = [c for c in df.columns if any(k in c.lower() for k in keywords)]
+    score_col = score_candidates[0] if score_candidates else None
+
+# Aide au debug : si toujours introuvable, afficher la liste des colonnes
+if score_col is None:
+    st.warning(f"Colonne de score introuvable. Colonnes disponibles : {list(df.columns)}")
 # Colonnes position et équipe
-position_col = next((c for c in df.columns if "position" in c.lower()), None)
-team_col     = next((c for c in df.columns if "team_name" in c.lower() or c.lower()=="team"), None)
+position_col = next(
+    (c for c in df.columns
+     if c.lower() in ("position", "pos", "player_pos", "player_position")
+     or "position" in c.lower()),
+    None
+)
+ # Column holding numeric team ID (preferred). Fallback to team name text column.
+team_col = next((c for c in df.columns if "team_id" in c.lower()), None)
+if team_col is None:
+    team_col = next((c for c in df.columns if "team_name" in c.lower() or c.lower() == "team"), None)
+# Détection colonne des profils (noms de clusters)
+profile_col = next((c for c in df.columns if "profile_name" in c.lower()), None)
+
+# Ajouter une colonne position_full avec le nom complet si position existe
+if position_col and position_col in df.columns:
+    df["position_full"] = df[position_col].map(POS_MAPPING).fillna(df[position_col])
+else:
+    df["position_full"] = None
 
 # On stoppe si colonnes manquantes
 if season_col is None or player_col is None or score_col is None:
@@ -490,41 +560,77 @@ with tabs[1]:
 with tabs[0]:
 
     # Création de quatre sous-onglets
-    sub_tabs = st.tabs(["Overview", "Individual", "Rookie Scout", "Projection Futur"])
+    sub_tabs = st.tabs(["Overview", "Individual", "Rookie Scout", "Projection Future"])
 
     # ---- Sub-tab Overview ----
     with sub_tabs[0]:
         st.header("Profil & Carrière - Vue d'ensemble")
 
+        # Filtre par position (utilise position_full)
+        if "position_full" in df.columns and df["position_full"].notna().any():
+            positions = sorted(df["position_full"].dropna().unique())
+            sel_positions = st.multiselect("Filtrer par poste", positions, default=positions)
+            df_filtered = df[df["position_full"].isin(sel_positions)]
+        else:
+            # Pas de colonne position valide : on désactive le filtre
+            sel_positions = []
+            df_filtered = df.copy()
+
         # A. Top 10 joueurs par score moyen
         st.subheader("🏆 Top 10 (score_100 moyen sur carrière)")
         overall = (
-            df.groupby(name_col)
-              .agg(mean_score=(score_col, "mean"), seasons_played=(season_col, "nunique"))
-              .reset_index()
+            df_filtered.groupby(name_col)
+                .agg(
+                    mean_score=(score_col, "mean"),
+                    seasons_played=(season_col, "nunique"),
+                    score_std=(score_col, "std"),
+                    score_peak=(score_col, "max")
+                )
+                .reset_index()
         )
+        overall["peak_to_avg"] = overall["score_peak"] / overall["mean_score"]
         top10 = overall.sort_values("mean_score", ascending=False).head(10)
 
         # Metrics globaux
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Score Moyen Global", f"{overall['mean_score'].mean():.1f}")
         m2.metric("Joueurs Total", overall.shape[0])
-        m3.metric("Clusters", df[cluster_col].nunique() if cluster_col else "–")
-        m4.metric("Saisons Max", df[season_col].nunique())
+        # Nombre de profils uniques
+        if profile_col:
+            m3.metric("Profils", df_filtered[profile_col].nunique())
+        else:
+            m3.metric("Clusters", df_filtered[cluster_col].nunique() if cluster_col else "–")
+        m4.metric("Saisons Max", df_filtered[season_col].nunique())
         st.markdown("---")
 
         # Top 10 table and bar chart side by side
-        t1, t2 = st.columns([1,1])
+        t1, t2 = st.columns([2,1], gap="large")
         with t1:
             st.subheader("Top 10 Joueurs")
             top10_df = top10.rename(columns={
                 name_col: "Joueur",
                 "mean_score": "Score Moyen",
-                "seasons_played": "Saisons Jouées"
-            })[["Joueur", "Score Moyen", "Saisons Jouées"]].reset_index(drop=True)
-            st.markdown(top10_df.to_html(index=False), unsafe_allow_html=True)
+                "seasons_played": "Saisons Jouées",
+                "score_std": "Volatilité",
+                "peak_to_avg": "Peak/Avg"
+            })[["Joueur", "Score Moyen", "Saisons Jouées", "Volatilité", "Peak/Avg"]].reset_index(drop=True)
+            # Display Top10 as styled HTML table
+            styled_table = (
+                top10_df.style
+                    .hide(axis="index")
+                    .set_table_styles([
+                        {'selector': 'th', 'props': [('background-color', '#e8dcca')]},
+                        {'selector': 'td', 'props': [('background-color', '#e8dcca')]}
+                    ])
+                    .set_properties(**{'border': '1px solid #ddd'})
+            )
+            html = styled_table.to_html()
+            components.html(html, height=400, scrolling=True)
+
+            
         with t2:
             st.subheader("Visualisation")
+            # Bar chart for Top 10 players
             bar_top10 = (
                 alt.Chart(top10)
                    .mark_bar()
@@ -532,15 +638,15 @@ with tabs[0]:
                        x=alt.X("mean_score:Q", title="Score Moyen"),
                        y=alt.Y(f"{name_col}:N", sort="-x", title="Joueur")
                    )
-                   .properties(height=300)
+                   .properties(height=300, width=400)
             )
-            st.altair_chart(bar_top10, use_container_width=True)
+            st.altair_chart(bar_top10.properties(width=400), use_container_width=False)
         st.markdown("---")
 
         # Distribution des scores
         st.subheader("📊 Distribution des score_100")
         hist_score = (
-            alt.Chart(df)
+            alt.Chart(df_filtered)
                .mark_bar()
                .encode(
                    x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=30), title="score_100"),
@@ -552,28 +658,40 @@ with tabs[0]:
         st.markdown("---")
 
         # Scatter Usage vs Score
-        if "usage_rate" in df.columns:
+        if "usage_rate" in df_filtered.columns:
             st.subheader("🔄 Usage Rate vs score_100")
             scatter_ur = (
-                alt.Chart(df)
+                alt.Chart(df_filtered)
                    .mark_circle(size=50, opacity=0.6)
                    .encode(
                        x=alt.X("usage_rate:Q", title="Usage Rate"),
                        y=alt.Y(f"{score_col}:Q", title="score_100"),
-                       color=alt.Color("cluster:N", title="Cluster"),
+                       color=alt.Color(f"{profile_col}:N", title="Profil joueur") if profile_col else alt.Color("cluster:N", title="Cluster"),
                        tooltip=[alt.Tooltip(name_col, title="Joueur"), alt.Tooltip("usage_rate:Q"), alt.Tooltip(f"{score_col}:Q")]
                    )
                    .properties(height=300)
                    .interactive()
             )
-            st.altair_chart(scatter_ur, use_container_width=True)
+            # Place the legend at the bottom if possible
+            if profile_col:
+                st.altair_chart(scatter_ur.configure_legend(orient="bottom"), use_container_width=True)
+            else:
+                st.altair_chart(scatter_ur, use_container_width=True)
             st.markdown("---")
 
-        # B. Répartition par cluster
+        # B. Répartition par cluster (utilise cluster_label pour affichage)
         if cluster_col:
-            st.subheader("🎭 Répartition par cluster")
+            st.subheader("🎭 Répartition par profil de joueur")
+            # create cluster_label for display
+            if profile_col:
+                df_filtered["cluster_label"] = df_filtered[profile_col]
+            else:
+                df_filtered["cluster_label"] = df_filtered[cluster_col].map({
+                    0: "Playmaker", 1: "All-Around", 2: "Scoring Guard",
+                    3: "Big Man", 4: "Sharpshooter"
+                })
             cl_counts = (
-                df.groupby(cluster_col)[player_col]
+                df_filtered.groupby("cluster_label")[player_col]
                   .nunique()
                   .reset_index(name="Nb Joueurs")
             )
@@ -582,18 +700,21 @@ with tabs[0]:
                    .mark_bar()
                    .encode(
                        x=alt.X("Nb Joueurs:Q", title="Nombre de joueurs"),
-                       y=alt.Y(f"{cluster_col}:N", sort="-x", title="Cluster")
+                       y=alt.Y("cluster_label:N", sort="-x", title="Profil")
                    )
                    .properties(height=250)
             )
             st.altair_chart(bar_cl, use_container_width=True)
+            # Afficher descriptions sous le graphique
+            for prof, desc in CLUSTER_DESCRIPTIONS.items():
+                st.markdown(f"**{prof}** : {desc}")
             st.markdown("---")
 
         # C. Distribution des âges
-        if "age" in df.columns:
+        if "age" in df_filtered.columns:
             st.subheader("👶 Distribution des âges")
             hist_age = (
-                alt.Chart(df)
+                alt.Chart(df_filtered)
                    .mark_bar()
                    .encode(
                        x=alt.X("age:Q", bin=alt.Bin(maxbins=20), title="Âge"),
@@ -607,7 +728,7 @@ with tabs[0]:
             # D. Score vs Âge
             st.subheader("📈 Score vs Âge")
             scatter = (
-                alt.Chart(df)
+                alt.Chart(df_filtered)
                    .mark_circle(size=60, opacity=0.5)
                    .encode(
                        x=alt.X("age:Q", title="Âge"),
@@ -624,6 +745,39 @@ with tabs[0]:
             st.altair_chart(scatter, use_container_width=True)
             st.markdown("---")
 
+        # --- Résumé narratif automatique ---
+        st.subheader("📝 Résumé Clé")
+        if not top10.empty:
+            leader = top10.iloc[0]
+            leader_name = leader[name_col]
+            leader_score = leader["mean_score"]
+            st.markdown(f"**Leader** : {leader_name} avec un score moyen de **{leader_score:.1f}** sur sa carrière.")
+        else:
+            st.markdown("Aucun joueur à afficher.")
+
+        st.markdown("---")
+        # --- Métriques avancées moyennes ---
+        st.subheader("📊 Métriques avancées moyennes")
+        adv_metrics = ['efg_pct', 'ts_pct', 'ast_tov_ratio', 'usage_rate']
+        # Filter metrics present
+        adv_metrics = [m for m in adv_metrics if m in df_filtered.columns]
+        if adv_metrics:
+            avg_adv = df_filtered[adv_metrics].mean().reset_index()
+            avg_adv.columns = ['Métrique', 'Valeur Moyenne']
+            bar_adv = (
+                alt.Chart(avg_adv)
+                   .mark_bar(color="#C9082A")
+                   .encode(
+                       x=alt.X("Valeur Moyenne:Q", title="Valeur Moyenne"),
+                       y=alt.Y("Métrique:N", sort='-x', title="Métrique")
+                   )
+                   .properties(height=200)
+            )
+            st.altair_chart(bar_adv, use_container_width=True)
+        else:
+            st.markdown("Pas de métriques avancées disponibles pour ce filtre.")
+
+ 
     # ---- Sub-tab Individual ----
     with sub_tabs[1]:
         # Sélecteur de saison local
@@ -632,6 +786,7 @@ with tabs[0]:
 
         st.header("Profil & Carrière - Joueur Individuel")
         st.subheader("Filtrer Joueurs")
+
 
         actif_only = st.checkbox("Afficher uniquement les joueurs en activité", value=True)
 
@@ -653,13 +808,56 @@ with tabs[0]:
             p_df = df[df[name_col] == sel_player].sort_values(season_col)
 
         # Affichage sous forme de carte
-        # récupérer position et équipe
-        position  = p_df[position_col].iloc[0] if position_col else ""
+        # récupérer position et équipe (utilise position_full si dispo)
+                # --- Position : plusieurs fallbacks ------------------------------------
+        position = None
+        # 1) Position « full » déjà préparée
+        if "position_full" in p_df.columns and pd.notna(p_df["position_full"].iloc[0]):
+            position = p_df["position_full"].iloc[0]
+        # 2) Colonne brute (PG, C…) puis mapping vers nom complet
+        elif position_col and position_col in p_df.columns and pd.notna(p_df[position_col].iloc[0]):
+            raw_pos  = p_df[position_col].iloc[0]
+            position = POS_MAPPING.get(str(raw_pos).upper(), raw_pos)
+        # 3) Sinon chaîne vide pour ne rien afficher
+        else:
+            position = ""
+
         template_path    = "MLPlayers/assets/template.png"
         player_photo_url = p_df["photo_url"].iloc[0]
         score_val        = p_df[score_col].iloc[-1]
-       # Affichage du card et du logo SVG à droite
-        # On alloue plus d'espace à la carte et centre le logo
+
+        # ─── Détermination robuste de l’équipe ──────────────────────────────
+        team_raw = None
+        if team_col and team_col in p_df.columns:
+            team_raw = p_df[team_col].iloc[0]
+        elif "team" in p_df.columns:                # fallback colonne 'team'
+            team_raw = p_df["team"].iloc[0]
+
+        # 1) Essayer de convertir en ID numérique
+        try:
+            team_id_int = int(team_raw)
+            abbrev, _   = TEAM_INFO.get(team_id_int, ("", None))
+        except (TypeError, ValueError):
+            team_id_int = None
+            # 2) Si texte : chercher l’abréviation ou le nom complet
+            team_str = str(team_raw) if team_raw is not None else ""
+            # Si déjà une abréviation de 3 lettres
+            if len(team_str) == 3 and team_str.isalpha():
+                abbrev = team_str.upper()
+            else:
+                # Cherche l’abréviation dans le nom complet
+                match = next(
+                    (abbr for abbr, name in
+                     [(v[0], k) for k, v in TEAM_INFO.items()]
+                     if abbr.lower() in team_str.lower() or name.lower() in team_str.lower()),
+                    ""
+                )
+                abbrev = match
+
+        # Passe soit l’ID, soit l’abréviation (fonction gère les deux)
+        card_team_param = team_id_int if team_id_int is not None else abbrev
+
+        # Affichage du card et du logo SVG à droite
         col_card, col_logo = st.columns([1, 1])
 
         # Carte joueur (garde width=300)
@@ -668,7 +866,7 @@ with tabs[0]:
                 generate_player_card(
                     template_path,
                     player_photo_url,
-                    p_df["team"].iloc[0],
+                    card_team_param,
                     position,
                     score_val,
                     sel_player
@@ -676,30 +874,90 @@ with tabs[0]:
                 width=300
             )
 
-        # Logo SVG à droite, centré verticalement
+        # Logo SVG à droite, centré verticalement et biographie
         with col_logo:
-            abbrev, logo_url = TEAM_INFO.get(int(p_df["team"].iloc[0]), ("", None))
+            abbrev = ""
+            # Récupère (abbrev, logo_url) à partir de l’ID numérique OU de l’abréviation
+            if team_id_int is not None:
+                abbrev, logo_url = TEAM_INFO.get(team_id_int, ("", None))
+            else:
+                # cherche via l’abréviation texte
+                team_id_int = next(
+                    (tid for tid, (abbr, _) in TEAM_INFO.items() if abbr == abbrev),
+                    None
+                )
+                _, logo_url = TEAM_INFO.get(team_id_int, ("", None))
             if logo_url:
                 # Centrer verticalement le logo à côté de la carte
                 st.markdown(
                     f"""
                     <div style="
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      height: 400px; /* Ajuster selon la hauteur du card */
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 350px;  /* adjust as needed */
                     ">
-                      <img src="{logo_url}" width="300" />
+                        <img src="{logo_url}" width="300" />
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-            
 
-        # Vidéo de highlights
-        if "yt_clip_url" in p_df.columns and pd.notna(p_df["yt_clip_url"].iloc[0]):
-            components.iframe(p_df["yt_clip_url"].iloc[0], height=315)
+            # --- Biographie & données physiques ---
+            bio_cols = {
+                "Taille (cm)": "height_cm",
+                "Poids (kg)": "weight_kg" if "weight_kg" in p_df.columns else None,
+                "Âge": "age",
+                "Expérience (années)": "exp",
+                "Poste": "position_full" if "position_full" in p_df.columns else (position_col or None),
+            }
+            bio_data = {}
+            for label, col in bio_cols.items():
+                # Ignore undefined mappings
+                if not col:
+                    continue
+
+                # Primary source: value from the dataframe
+                if col in p_df.columns:
+                    value = p_df[col].iloc[-1]
+                    if pd.notna(value):
+                        bio_data[label] = value
+                        continue  # value found, move to next label
+
+                # ── Fallbacks ──────────────────────────────────────────────
+                # For "Poste", fall back to the already‑computed `position`
+                if label == "Poste" and position:
+                    bio_data[label] = position
+            if bio_data:
+                bio_df = pd.DataFrame.from_dict(bio_data, orient="index", columns=["Valeur"])
+                styled_bio = (
+                    bio_df.style
+                        .set_table_styles([
+                            {'selector': 'tbody td', 'props': [('background-color', '#e8dcca')]},
+                            {'selector': 'thead th', 'props': [('background-color', '#e8dcca')]},
+                            {'selector': 'tbody th', 'props': [('background-color', '#e8dcca')]}  # This styles the index
+                        ])
+                )
+                html_bio = styled_bio.to_html()
+                components.html(html_bio, height=200, scrolling=False)
+            else:
+                                st.info("Données physiques indisponibles.")
             st.markdown("---")
+
+
+        # Vidéo de highlights — scrap automatique si colonne absente
+        yt_url = None
+        if "yt_clip_url" in p_df.columns and pd.notna(p_df["yt_clip_url"].iloc[0]):
+            yt_url = p_df["yt_clip_url"].iloc[0]
+        else:
+            yt_url = fetch_highlight_url(sel_player)
+
+        if yt_url:
+            embed = yt_url.replace("watch?v=", "embed/")
+            components.iframe(embed, height=315)
+            st.markdown("---")
+        else:
+            st.info("Aucun highlight trouvé automatiquement.")
 
         # Évolution des métriques clés vs moyenne générale
         st.subheader("Évolution des métriques clés vs moyenne générale")
@@ -772,14 +1030,134 @@ with tabs[0]:
 
         # Stats par saison
         st.subheader("Stats par saison")
-        # Tableau saisonnel sans index via HTML
         season_df = p_df[[season_col] + existing].reset_index(drop=True)
-        st.markdown(season_df.to_html(index=False), unsafe_allow_html=True)
+        # Display as a styled HTML table
+        styled_table = (
+            season_df.style
+            .hide(axis="index")
+            .set_table_styles([
+            {'selector': 'th', 'props': [('background-color', '#e8dcca')]},
+            {'selector': 'td', 'props': [('background-color', '#e8dcca')]}
+            ])
+            .set_properties(**{'border': '1px solid #ddd'})
+        )
+        html = styled_table.to_html()
+        components.html(html, height=250, scrolling=True)
+
+
+        # 2) Disponibilité par saison
+        st.subheader("🏥 Disponibilité par saison")
+        if "avail" in p_df.columns:
+            avail_df = p_df[[season_col, "avail"]].copy()
+            avail_df["pct"] = avail_df["avail"] * 100
+            avail_bar = (
+                alt.Chart(avail_df)
+                  .mark_bar(color="#C9082A")
+                  .encode(
+                    x=alt.X(f"{season_col}:O", title="Saison"),
+                    y=alt.Y("pct:Q", title="% Matchs Joués"),
+                    tooltip=[season_col, alt.Tooltip("pct:Q", format=".1f", title="Pct")]
+                  )
+                  .properties(height=200)
+            )
+            st.altair_chart(avail_bar, use_container_width=True)
+        else:
+            st.info("Aucune donnée de disponibilité disponible.")
+        st.markdown("---")
+
+        # 3) Comparaison à un All‑Star du même poste
+        st.subheader("🤝 Comparaison à un All‑Star")
+
+        # Helper pour récupérer le meilleur joueur (score moyen carrière le plus élevé)
+        def top_reference(filter_df):
+            return (
+                filter_df
+                    .groupby(name_col)
+                    .agg(mean_score=(score_col, "mean"))
+                    .reset_index()
+                    .query(f"{name_col} != @sel_player")
+                    .sort_values("mean_score", ascending=False)
+                    .head(1)
+            )
+
+        # --- Étape 0 : recherche d'un All‑Star du même cluster/profil ---
+        player_cluster = None
+        # ─── Limiter le pool de référence aux saisons antérieures au début du joueur ──
+        debut_season = p_df[season_col].min()
+        base_df = df[df[season_col] < debut_season]           # seulement saisons < début
+        # Si aucune saison antérieure n'existe (cas extrême), on garde tout le dataset
+        if base_df.empty:
+            base_df = df.copy()
+
+        if profile_col and profile_col in p_df.columns:
+            player_cluster = p_df[profile_col].iloc[0]
+        elif cluster_col and cluster_col in p_df.columns:
+            player_cluster = p_df[cluster_col].iloc[0]
+
+        ref = pd.DataFrame()  # initialisation
+        if player_cluster is not None:
+            # On cible en priorité les joueurs du même cluster/profil
+            ref_filter = (
+                base_df[base_df[cluster_col] == player_cluster]
+                if cluster_col and player_cluster is not None
+                else base_df[base_df[profile_col] == player_cluster]
+            )
+            ref = top_reference(ref_filter)
+
+        # Poste exact (nom complet ex : "Point Guard")
+        pos_full = position            # ex: "Point Guard"
+        # Étape 1 : même poste complet
+        if ref.empty:
+            ref = top_reference(base_df[base_df["position_full"] == pos_full])
+
+        # Fallback 1 : même acronyme (PG / SG / SF / PF / C / G / F)
+        if ref.empty and position_col and position_col in p_df.columns:
+            pos_acro = p_df[position_col].iloc[0]
+            ref = top_reference(base_df[base_df[position_col] == pos_acro])
+
+        # Fallback 2 : poste large (Guard / Forward / Center)
+        if ref.empty and isinstance(pos_full, str):
+            broad_keywords = ["Guard", "Forward", "Center"]
+            broad = next((k for k in broad_keywords if k.lower() in pos_full.lower()), None)
+            if broad:
+                ref = top_reference(base_df[base_df["position_full"].str.contains(broad, case=False, na=False)])
+
+        # Fallback 3 : meilleur score global (hors joueur sélectionné)
+        if ref.empty:
+            ref = top_reference(base_df)
+
+        # --- Affichage du graphique comparatif ou message si encore vide ---
+        if not ref.empty:
+            ref_name = ref[name_col].iloc[0]
+
+            # Données saisonnières pour le joueur sélectionné
+            comp_df = p_df[[season_col, score_col]].assign(Player=sel_player)
+
+            # Données saisonnières pour la référence
+            ref_df = df[df[name_col] == ref_name][[season_col, score_col]].assign(Player=ref_name)
+
+            comp_all = pd.concat([comp_df, ref_df], ignore_index=True)
+
+            comp_chart = (
+                alt.Chart(comp_all)
+                   .mark_line(point=True)
+                   .encode(
+                       x=alt.X(f"{season_col}:O", title="Saison"),
+                       y=alt.Y(f"{score_col}:Q", title="Score_100"),
+                       color=alt.Color("Player:N", title="Joueur"),
+                       tooltip=[season_col, alt.Tooltip(score_col, title="Score"), "Player"]
+                   )
+                   .properties(height=300)
+            )
+            st.altair_chart(comp_chart, use_container_width=True)
+            st.markdown(f"Référence All‑Star sélectionnée : **{ref_name}** (moyenne {ref['mean_score'].iloc[0]:.1f})")
+        else:
+            st.info("Pas d'All‑Star trouvé pour ce poste (même après fallback).")
 
     # ---- Rookie Scout ----
     with sub_tabs[2]:
         st.header("Scouting du Rookie")
-        st.markdown("Entrez les caractéristiques pour estimer son potentiel (score_100).")
+        st.markdown("Entrez les caractéristiques pour estimer sa potentielle note.")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -787,32 +1165,79 @@ with tabs[0]:
             weight = st.number_input("Poids (kg)", 60, 150, 90)
             age    = st.number_input("Âge", 18, 25, 19)
         with col2:
-            position   = st.selectbox("Poste", ["PG", "SG", "SF", "PF", "C"])
-            teams      = df["team"].unique().tolist() if "team" in df.columns else ["–"]
-            draft_team = st.selectbox("Équipe draftee", teams)
+            position   = st.selectbox("Poste", list(POS_MAPPING.values()))
+            # Build list of full team names for draft selection
+            # Use the game log dataframe to map abbreviations to full names
+            abbr_to_name = dict(
+                df_teamlog[["TEAM_ABBREVIATION","TEAM_NAME"]]
+                    .drop_duplicates()
+                    .values
+            )
+            name_to_abbr = {v: k for k, v in abbr_to_name.items()}
+            team_names = sorted(abbr_to_name.values())
+            draft_team = st.selectbox("Équipe draftee", team_names)
 
         if st.button("Estimer potentiel rookie"):
             potential = 50 + (height-200)*0.1 + (age-20)*0.3
+
+            # Map full name back to abbreviation then to ID
+            selected_abbr = name_to_abbr.get(draft_team)
+            team_id = next((tid for tid, (abbr, _) in TEAM_INFO.items() if abbr == selected_abbr), None)
+
+            # Afficher les résultats
             st.metric("Potentiel estimé (score_100)", f"{potential:.1f}")
-            st.info("🔧 Modèle rookie à intégrer ultérieurement")
+            if team_id:
+                st.markdown(f"**Équipe**: {draft_team} (ID: {team_id})")
+                # Afficher le logo de l'équipe si disponible
+                logo_url = TEAM_INFO.get(team_id, (None, None))[1]
+                if logo_url:
+                    st.image(logo_url, width=100)
 
-    # ---- Projection Futur ----
-    with sub_tabs[3]:
-        st.header("Projection future")
-        players_proj = sorted(df[name_col].unique())
-        sel_p = st.selectbox("Joueur", players_proj, key="proj")
-        horizon = st.slider("Horizon (saisons)", 1, 5, 1)
+        # --- Explication du modèle rookie ---
+        st.markdown("#### ❓ Qu'est-ce que le modèle Rookie ?")
+        st.markdown(
+            "C'est un point de départ heuristique : on part d'une note de 50/100, "
+            "puis on la module en fonction de la taille (gain de 0.1 pt/cm au-dessus de 200cm) "
+            "et de l'âge (perte de 0.3 pt/an en dessous de 20 ans)."
+        )
 
-        if st.button("Prédire"):
-            last = df[df[name_col] == sel_p].sort_values(season_col).iloc[-1]
-            pred = last[score_col] + 2*horizon
-            st.write(f"**Score_100 prédit pour +{horizon} saison(s)** : {pred:.1f}")
-            st.info("🔧 Modèle multi-horizon à développer")
+ # ─── Projection Futur (remplace le bloc actuel) ─────────────────────────
+with sub_tabs[3]:
+    st.header("Projection future")
 
+    players_proj = sorted(df[name_col].unique())
+    sel_p = st.selectbox("Joueur", players_proj, key="proj")
+
+    max_horizon = 5                       # ←  proj_1 … proj_5 disponibles
+    horizon     = st.slider("Horizon (saisons)", 1, max_horizon, 1)
+
+    if st.button("Prédire"):
+        row = df[df[name_col] == sel_p].sort_values(season_col).iloc[-1]
+
+        # Nom de la colonne à aller chercher
+        proj_col = f"proj_{horizon}"
+        if proj_col not in row:
+            st.error(f"Colonne {proj_col} absente du parquet.")
+        else:
+            pred = row[proj_col]
+            st.metric(f"Score_100 projeté à +{horizon}", f"{pred:.1f}")
+
+        # Afficher la trajectoire 0-5 saisons
+        traj = row[[f"proj_{i}" for i in range(1, max_horizon+1)]].T.reset_index()
+        traj.columns = ["Horizon", "Projection"]
+        traj["Horizon"] = traj["Horizon"].str.extract("(\d)").astype(int)
+
+        line = (
+            alt.Chart(traj)
+               .mark_line(point=True, color="#C9082A")
+               .encode(
+                   x=alt.X("Horizon:O", title="Saisons dans le futur"),
+                   y=alt.Y("Projection:Q", title="Score_100 projeté")
+               )
+               .properties(height=300)
+        )
+        st.altair_chart(line, use_container_width=True)
     # Footer
     st.markdown("---")
-    st.markdown(
-        "ℹ️ Dashboard prototype – cluster et filtres automatiques si dispo. "
-        "À enrichir (CI/CD, docker, PBP, tracking…)."
-    )
+ 
 

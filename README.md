@@ -13,7 +13,9 @@ Lien de la présentation : https://bit.ly/NBAmlproject
 5. [Validation & évaluation](#validation--évaluation)  
 6. [Dashboard & visualisation](#dashboard--visualisation)  
 7. [Installation & premiers tests](#installation--premiers-tests)  
-8. [Automatisation & déploiement](#automatisation--déploiement)  
+8. [Automatisation](#automatisation)  
+9. [Contribution](#contribution)  
+10. [Licence](#licence)  
 
 
 ---
@@ -86,31 +88,50 @@ ML Players a pour vocation de :
 git clone https://github.com/othmanedq/ml-players.git
 cd ml-players
 pip install -r requirements.txt
-```
 
-```bash
 # Pipeline complet
 make all
 
-# Étapes individuelles
-make collect   # collecte + nettoyage
-make prepare   # préparation des données
-make score     # calcul score_100
-make features  # feature engineering
-make cluster   # clustering
-make ml        # building dataset ML
-make validate  # back-tests & corrélations
-make dashboard # lancement du dashboard
+# Lancer uniquement le dashboard (données déjà préparées)
+make dashboard
 ```
 
-## Automatisation & déploiement
+## Automatisation
 
-- **Makefile** pour toutes les étapes.  
-- **CI/CD** : GitHub Actions exécutant lint, tests et `make all`.  
-- **Containerisation** : Dockerfile inclus.  
-- **Monitoring** : alertes sur data drift et dérive des performances (R², RMSE).
+Toutes les étapes clés du pipeline sont regroupées dans le **Makefile** :
+
+| Cible | Description |
+|-------|-------------|
+| `make collect_raw`          | Récupération des box‑scores bruts via l’API | 
+| `make fix_phys`             | Nettoyage & standardisation des attributs physiques |
+| `make prepare_curated`      | Agrégation match ➜ joueur & enrichment bio/pace |
+| `make feature_engineering`  | Calcul des features avancées (per36, eFG %, TS %, etc.) |
+| `make compute_rating`       | Calcul du `score_100` unifié |
+| `make cluster_players`      | Clustering K‑means des profils |
+| `make build_dataset_ml`     | Construction du dataset multi‑saisons ML |
+| `make generate_ws_vorp`     | Scraping & fusion Win Shares / VORP |
+| `make dashboard_data`       | Préparation des données finales pour le dashboard |
+| `make predict_future`       | Projections horizon 1 → 5 saisons à l’avance |
+| `make all`                  | Chaîne complète (collecte ➜ projections) |
+
+> *Astuce :* chaque cible peut être lancée indépendamment pour du développement incrémental.
+
+## Contribution
+
+Les PR sont les bienvenues !  
+1. Forkez le repo et créez votre branche (`git checkout -b feat/ma-feature`).  
+2. Commitez vos changements (`git commit -m "Ajoute ma feature"`).  
+3. Poussez la branche (`git push origin feat/ma-feature`) et ouvrez une *pull‑request*.
+
+Merci de vous assurer que la commande `make all` s’exécute sans erreur avant d’ouvrir une pull‑request.
+
+## Licence
+
+Projet distribué sous licence **MIT**.  
+Voir le fichier [`LICENSE`](LICENSE) pour plus de détails.
 
 
+- Merci à [Basketball‑Reference](https://www.basketball-reference.com/) et à la [NBA Stats API](https://www.nba.com/stats) pour la mise à disposition des données.
+- Icônes par [Feather](https://feathericons.com/) – licence MIT.
 
-
-Repo GitHub : https://github.com/othmanedq/ml-players
+---
