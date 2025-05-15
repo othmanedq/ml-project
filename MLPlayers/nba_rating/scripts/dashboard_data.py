@@ -160,21 +160,42 @@ else:
 
 # ────────────────────────────────
 #  7.b Équipe principale (team_id)
+#      + Position principale (pos)
 # ────────────────────────────────
 if IN_LOGS.exists():
-    print(f"🔄  Attribution équipe principale : {IN_LOGS.name}")
-    # On choisit l’équipe la plus fréquente jouée par le joueur sur la saison
-    # ‑ Détection du nom de colonne saison dans les gamelogs : "SEASON" ou "SEASON_ID"
-    # Lecture ultra‑légère du schéma (0 I/O) pour détecter les noms de colonnes
+    print(f"🔄  Attribution équipe & position principales : {IN_LOGS.name}")
+
+    # ❶ Lire le schéma (zéro I/O) pour connaître les noms exacts de colonnes
     sample_cols = pq.ParquetFile(IN_LOGS).schema.names
 
-    season_src  = "SEASON" if "SEASON" in sample_cols else "SEASON_ID"
+    # ❷ Colonne saison possible : SEASON ou SEASON_ID
+    season_src = "SEASON" if "SEASON" in sample_cols else "SEASON_ID"
 
-    logs_min = pd.read_parquet(
-        IN_LOGS,
-        columns=["PLAYER_ID", "TEAM_ID", season_src]
-    )
+    # ❸ Détection souple de la colonne position (POSITION, POS, …)
+    pos_candidates = [
+        c for c in sample_cols
+        if c.lower() in ("position", "pos", "player_pos", "player_position")
+    ]
+    pos_src = pos_candidates[0] if pos_candidates else None
 
+    # --- Détection éventuelle du nom & abréviation d’équipe -----------------
+    team_name_cols = []
+    if "TEAM_NAME" in sample_cols:
+        team_name_cols.append("TEAM_NAME")
+    if "TEAM_ABBREVIATION" in sample_cols:
+        team_name_cols.append("TEAM_ABBREVIATION")
+
+    # ❹ Colonnes minimales à charger
+    cols_to_load = ["PLAYER_ID", "TEAM_ID", season_src]
+    if pos_src:
+        cols_to_load.append(pos_src)
+
+    # Colonnes supplémentaires à charger pour l’équipe
+    cols_to_load.extend(team_name_cols)
+
+    logs_min = pd.read_parquet(IN_LOGS, columns=cols_to_load)
+
+    # ❺ Équipe principale : mode de TEAM_ID par joueur & saison
     team_lookup = (
         logs_min
           .groupby(["PLAYER_ID", season_src])["TEAM_ID"]
@@ -183,11 +204,61 @@ if IN_LOGS.exists():
           .rename(columns={season_src: "season", "TEAM_ID": "team_id"})
     )
     df = df.merge(team_lookup, on=["PLAYER_ID", "season"], how="left")
+
+    # ❻.b  Nom & abréviation principale de l’équipe (si dispo)
+    if team_name_cols:
+        if "TEAM_NAME" in team_name_cols:
+            name_lookup = (
+                logs_min
+                  .groupby(["PLAYER_ID", season_src])["TEAM_NAME"]
+                  .agg(lambda x: x.value_counts().idxmax())
+                  .reset_index()
+                  .rename(columns={season_src: "season", "TEAM_NAME": "team_name"})
+            )
+            df = df.merge(name_lookup, on=["PLAYER_ID", "season"], how="left")
+
+        if "TEAM_ABBREVIATION" in team_name_cols:
+            abbr_lookup = (
+                logs_min
+                  .groupby(["PLAYER_ID", season_src])["TEAM_ABBREVIATION"]
+                  .agg(lambda x: x.value_counts().idxmax())
+                  .reset_index()
+                  .rename(columns={season_src: "season", "TEAM_ABBREVIATION": "team_abbrev"})
+            )
+            df = df.merge(abbr_lookup, on=["PLAYER_ID", "season"], how="left")
+
+    # ❻ Position principale si disponible
+    if pos_src:
+        pos_lookup = (
+            logs_min
+              .groupby(["PLAYER_ID", season_src])[pos_src]
+              .agg(lambda x: x.value_counts().idxmax())
+              .reset_index()
+              .rename(columns={season_src: "season", pos_src: "pos"})
+        )
+        df = df.merge(pos_lookup, on=["PLAYER_ID", "season"], how="left")
+    else:
+        # Pour garder la colonne dans le schema final même si manquante
+        df["pos"] = pd.NA
+
+    # ❻.c  Libellé complet du poste
+    POS_MAP = {
+        "PG": "Point Guard", "SG": "Shooting Guard",
+        "SF": "Small Forward", "PF": "Power Forward", "C": "Center"
+    }
+    if "pos" in df.columns:
+        df["pos_full"] = (
+            df["pos"]
+              .astype("string")
+              .str.upper()
+              .map(POS_MAP)
+              .fillna(df["pos"])
+        )
 else:
-    print(f"⚠️  {IN_LOGS.name} manquant – team_id non ajouté")
+    print(f"⚠️  {IN_LOGS.name} manquant – team_id/pos non ajoutés")
 
 # ────────────────────────────────
 #  8. Sauvegarde
 # ────────────────────────────────
-print(f"✅  Écriture         : {OUTFILE.name}  ({len(df):,} lignes, {df.shape[1]} colonnes)")
+print(f"✅  Écriture         : {OUTFILE.name}  ({len(df):,} lignes, {df.shape[1]} colonnes incluant team_name/team_abbrev/pos_full)")
 df.to_parquet(OUTFILE, index=False)
